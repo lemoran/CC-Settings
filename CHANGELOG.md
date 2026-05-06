@@ -2,6 +2,21 @@
 
 All notable changes to CC Settings are documented here.
 
+## [1.2.2] — 2026-05-06
+
+### Added
+- `skillOverrides` setting (Default / Name Only / User-Invocable Only / Off) in General → Language & Output
+- `prUrlTemplate` setting in General → Attribution for custom PR-badge URLs
+- `alwaysLoad` toggle on the MCP server editor — bypasses tool-search deferral for that server
+- New environment variables in the Environment view:
+  - Display: `CLAUDE_CODE_HIDE_CWD`, `CLAUDE_CODE_FORCE_SYNC_OUTPUT`
+  - Updates section (new): `DISABLE_UPDATES`, `CLAUDE_CODE_PACKAGE_MANAGER_AUTO_UPDATE`
+  - Subagents & Gateway Discovery section (new): `CLAUDE_CODE_FORK_SUBAGENT`, `CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY`
+  - Bedrock section (new): `ANTHROPIC_BEDROCK_SERVICE_TIER`
+
+### Fixed
+- Removed invalid "Auto" tag from effort-level pickers — Claude Code's effort scale is `low / medium / high / xhigh / max`
+
 ## [1.2.1] — 2026-04-16
 
 ### Added
