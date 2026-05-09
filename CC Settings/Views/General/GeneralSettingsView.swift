@@ -862,8 +862,9 @@ struct GeneralSettingsView: View {
             let pipe = Pipe()
             let outputLock = NSLock()
             var collected = Data()
-            var retainedProcess: Process? = process
-            var retainedPipe: Pipe? = pipe
+            var processRef: Process? = process
+            var pipeRef: Pipe? = pipe
+            var didCloseHandle = false
 
             process.executableURL = URL(fileURLWithPath: resolved)
             process.arguments = args
@@ -873,12 +874,16 @@ struct GeneralSettingsView: View {
             let handle = pipe.fileHandleForReading
             handle.readabilityHandler = { fileHandle in
                 let chunk = fileHandle.availableData
-                guard !chunk.isEmpty else {
-                    fileHandle.readabilityHandler = nil
-                    return
-                }
                 outputLock.lock()
                 defer { outputLock.unlock() }
+                guard !chunk.isEmpty else {
+                    fileHandle.readabilityHandler = nil
+                    if !didCloseHandle {
+                        fileHandle.closeFile()
+                        didCloseHandle = true
+                    }
+                    return
+                }
                 collected.append(chunk)
             }
 
@@ -886,24 +891,32 @@ struct GeneralSettingsView: View {
                 outputLock.lock()
                 defer { outputLock.unlock() }
                 handle.readabilityHandler = nil
-                let remainder = handle.availableData
-                if !remainder.isEmpty {
-                    collected.append(remainder)
+                if !didCloseHandle {
+                    let remainder = handle.availableData
+                    if !remainder.isEmpty {
+                        collected.append(remainder)
+                    }
+                    handle.closeFile()
+                    didCloseHandle = true
                 }
-                handle.closeFile()
                 let output = String(data: collected, encoding: .utf8) ?? ""
                 continuation.resume(returning: output)
-                retainedPipe = nil
-                retainedProcess = nil
+                pipeRef = nil
+                processRef = nil
             }
 
             do {
                 try process.run()
             } catch {
+                outputLock.lock()
+                defer { outputLock.unlock() }
                 handle.readabilityHandler = nil
-                handle.closeFile()
-                retainedPipe = nil
-                retainedProcess = nil
+                if !didCloseHandle {
+                    handle.closeFile()
+                    didCloseHandle = true
+                }
+                pipeRef = nil
+                processRef = nil
                 continuation.resume(returning: "Error: \(error.localizedDescription)")
             }
         }
