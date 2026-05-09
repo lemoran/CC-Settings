@@ -232,8 +232,11 @@ struct GeneralSettingsView: View {
             Text("Claude Code")
         }
         .onAppear {
-            fetchInstalledVersion()
-            checkForUpdates()
+            Task { @MainActor in
+                await Task.yield()
+                fetchInstalledVersion()
+                checkForUpdates()
+            }
         }
     }
 
@@ -854,20 +857,44 @@ struct GeneralSettingsView: View {
             resolved = command
         }
 
-        let process = Process()
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: resolved)
-        process.arguments = args
-        process.standardOutput = pipe
-        process.standardError = pipe
+        return await withCheckedContinuation { continuation in
+            let process = Process()
+            let pipe = Pipe()
+            let outputLock = NSLock()
+            var collected = Data()
 
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8) ?? ""
-        } catch {
-            return "Error: \(error.localizedDescription)"
+            process.executableURL = URL(fileURLWithPath: resolved)
+            process.arguments = args
+            process.standardOutput = pipe
+            process.standardError = pipe
+
+            let handle = pipe.fileHandleForReading
+            handle.readabilityHandler = { fileHandle in
+                let chunk = fileHandle.availableData
+                guard !chunk.isEmpty else { return }
+                outputLock.lock()
+                defer { outputLock.unlock() }
+                collected.append(chunk)
+            }
+
+            process.terminationHandler = { _ in
+                outputLock.lock()
+                defer { outputLock.unlock() }
+                handle.readabilityHandler = nil
+                let remainder = handle.availableData
+                if !remainder.isEmpty {
+                    collected.append(remainder)
+                }
+                let output = String(data: collected, encoding: .utf8) ?? ""
+                continuation.resume(returning: output)
+            }
+
+            do {
+                try process.run()
+            } catch {
+                handle.readabilityHandler = nil
+                continuation.resume(returning: "Error: \(error.localizedDescription)")
+            }
         }
     }
 
