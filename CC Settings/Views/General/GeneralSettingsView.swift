@@ -862,9 +862,9 @@ struct GeneralSettingsView: View {
             let pipe = Pipe()
             let outputLock = NSLock()
             var collected = Data()
-            var processRef: Process? = process
-            var pipeRef: Pipe? = pipe
-            var didCloseHandle = false
+            var processRetainer: Process? = process
+            var pipeRetainer: Pipe? = pipe
+            var isHandleClosed = false
 
             process.executableURL = URL(fileURLWithPath: resolved)
             process.arguments = args
@@ -877,10 +877,10 @@ struct GeneralSettingsView: View {
                 outputLock.lock()
                 defer { outputLock.unlock() }
                 guard !chunk.isEmpty else {
-                    fileHandle.readabilityHandler = nil
-                    if !didCloseHandle {
+                    if !isHandleClosed {
+                        fileHandle.readabilityHandler = nil
                         fileHandle.closeFile()
-                        didCloseHandle = true
+                        isHandleClosed = true
                     }
                     return
                 }
@@ -890,19 +890,19 @@ struct GeneralSettingsView: View {
             process.terminationHandler = { _ in
                 outputLock.lock()
                 defer { outputLock.unlock() }
-                handle.readabilityHandler = nil
-                if !didCloseHandle {
+                if !isHandleClosed {
+                    handle.readabilityHandler = nil
                     let remainder = handle.availableData
                     if !remainder.isEmpty {
                         collected.append(remainder)
                     }
                     handle.closeFile()
-                    didCloseHandle = true
+                    isHandleClosed = true
                 }
                 let output = String(data: collected, encoding: .utf8) ?? ""
                 continuation.resume(returning: output)
-                pipeRef = nil
-                processRef = nil
+                pipeRetainer = nil
+                processRetainer = nil
             }
 
             do {
@@ -910,13 +910,13 @@ struct GeneralSettingsView: View {
             } catch {
                 outputLock.lock()
                 defer { outputLock.unlock() }
-                handle.readabilityHandler = nil
-                if !didCloseHandle {
+                if !isHandleClosed {
+                    handle.readabilityHandler = nil
                     handle.closeFile()
-                    didCloseHandle = true
+                    isHandleClosed = true
                 }
-                pipeRef = nil
-                processRef = nil
+                pipeRetainer = nil
+                processRetainer = nil
                 continuation.resume(returning: "Error: \(error.localizedDescription)")
             }
         }
