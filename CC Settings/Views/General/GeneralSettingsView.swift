@@ -865,6 +865,13 @@ struct GeneralSettingsView: View {
             var processRetainer: Process? = process
             var pipeRetainer: Pipe? = pipe
             var isHandleClosed = false
+            let closeHandleIfNeeded: (FileHandle) -> Void = { fileHandle in
+                if !isHandleClosed {
+                    fileHandle.readabilityHandler = nil
+                    fileHandle.closeFile()
+                    isHandleClosed = true
+                }
+            }
 
             process.executableURL = URL(fileURLWithPath: resolved)
             process.arguments = args
@@ -877,11 +884,7 @@ struct GeneralSettingsView: View {
                 outputLock.lock()
                 defer { outputLock.unlock() }
                 guard !chunk.isEmpty else {
-                    if !isHandleClosed {
-                        fileHandle.readabilityHandler = nil
-                        fileHandle.closeFile()
-                        isHandleClosed = true
-                    }
+                    closeHandleIfNeeded(fileHandle)
                     return
                 }
                 collected.append(chunk)
@@ -891,14 +894,12 @@ struct GeneralSettingsView: View {
                 outputLock.lock()
                 defer { outputLock.unlock() }
                 if !isHandleClosed {
-                    handle.readabilityHandler = nil
                     let remainder = handle.availableData
                     if !remainder.isEmpty {
                         collected.append(remainder)
                     }
-                    handle.closeFile()
-                    isHandleClosed = true
                 }
+                closeHandleIfNeeded(handle)
                 let output = String(data: collected, encoding: .utf8) ?? ""
                 continuation.resume(returning: output)
                 pipeRetainer = nil
@@ -910,11 +911,7 @@ struct GeneralSettingsView: View {
             } catch {
                 outputLock.lock()
                 defer { outputLock.unlock() }
-                if !isHandleClosed {
-                    handle.readabilityHandler = nil
-                    handle.closeFile()
-                    isHandleClosed = true
-                }
+                closeHandleIfNeeded(handle)
                 pipeRetainer = nil
                 processRetainer = nil
                 continuation.resume(returning: "Error: \(error.localizedDescription)")
