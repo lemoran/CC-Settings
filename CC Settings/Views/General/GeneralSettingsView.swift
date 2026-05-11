@@ -858,21 +858,26 @@ struct GeneralSettingsView: View {
         }
 
         return await withCheckedContinuation { continuation in
-            let process = Process()
-            let pipe = Pipe()
-            let outputLock = NSLock()
-            var collected = Data()
-            var processRetainer: Process? = process
-            var pipeRetainer: Pipe? = pipe
-            var isHandleClosed = false
-            let closeHandleIfNeeded: (FileHandle) -> Void = { fileHandle in
-                if !isHandleClosed {
-                    fileHandle.readabilityHandler = nil
-                    fileHandle.closeFile()
-                    isHandleClosed = true
+            // Lock-guarded mutable state shared between readability and termination
+            // callbacks. Lives as a reference type so the closures capture it as `let`,
+            // satisfying Swift 6 strict concurrency while still allowing mutation.
+            final class State: @unchecked Sendable {
+                let lock = NSLock()
+                var collected = Data()
+                var isHandleClosed = false
+
+                func closeHandle(_ fileHandle: FileHandle) {
+                    if !isHandleClosed {
+                        fileHandle.readabilityHandler = nil
+                        fileHandle.closeFile()
+                        isHandleClosed = true
+                    }
                 }
             }
+            let state = State()
 
+            let process = Process()
+            let pipe = Pipe()
             process.executableURL = URL(fileURLWithPath: resolved)
             process.arguments = args
             process.standardOutput = pipe
@@ -881,39 +886,35 @@ struct GeneralSettingsView: View {
             let handle = pipe.fileHandleForReading
             handle.readabilityHandler = { fileHandle in
                 let chunk = fileHandle.availableData
-                outputLock.lock()
-                defer { outputLock.unlock() }
+                state.lock.lock()
+                defer { state.lock.unlock() }
                 guard !chunk.isEmpty else {
-                    closeHandleIfNeeded(fileHandle)
+                    state.closeHandle(fileHandle)
                     return
                 }
-                collected.append(chunk)
+                state.collected.append(chunk)
             }
 
             process.terminationHandler = { _ in
-                outputLock.lock()
-                defer { outputLock.unlock() }
-                if !isHandleClosed {
+                state.lock.lock()
+                defer { state.lock.unlock() }
+                if !state.isHandleClosed {
                     let remainder = handle.availableData
                     if !remainder.isEmpty {
-                        collected.append(remainder)
+                        state.collected.append(remainder)
                     }
                 }
-                closeHandleIfNeeded(handle)
-                let output = String(data: collected, encoding: .utf8) ?? ""
+                state.closeHandle(handle)
+                let output = String(data: state.collected, encoding: .utf8) ?? ""
                 continuation.resume(returning: output)
-                pipeRetainer = nil
-                processRetainer = nil
             }
 
             do {
                 try process.run()
             } catch {
-                outputLock.lock()
-                defer { outputLock.unlock() }
-                closeHandleIfNeeded(handle)
-                pipeRetainer = nil
-                processRetainer = nil
+                state.lock.lock()
+                defer { state.lock.unlock() }
+                state.closeHandle(handle)
                 continuation.resume(returning: "Error: \(error.localizedDescription)")
             }
         }
