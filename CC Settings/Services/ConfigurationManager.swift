@@ -287,7 +287,7 @@ class ConfigurationManager: ObservableObject {
         "cleanupPeriodDays",
         "attribution",
         "teammateMode",
-        "disableAutoMode", "disableAllHooks",
+        "disableAutoMode", "autoMode", "disableAllHooks",
         "claudeMdExcludes",
         "sandbox", "worktree",
         // Legacy flat sandbox fields

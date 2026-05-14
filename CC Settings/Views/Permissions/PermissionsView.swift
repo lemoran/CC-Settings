@@ -160,6 +160,16 @@ struct PermissionsView: View {
     @State private var newRuleSpecifier: String = ""
     @State private var newRuleState: PermissionState = .allow
 
+    // MARK: - Auto Mode state
+    @State private var autoModeAllowText: String = ""
+    @State private var autoModeAllowDefaults: Bool = false
+    @State private var autoModeSoftDenyText: String = ""
+    @State private var autoModeSoftDenyDefaults: Bool = false
+    @State private var autoModeHardDenyText: String = ""
+    @State private var autoModeHardDenyDefaults: Bool = false
+    @State private var autoModeEnvironmentText: String = ""
+    @State private var autoModeEnvironmentDefaults: Bool = false
+
     var body: some View {
         Form {
             // MARK: - Default Mode
@@ -203,6 +213,44 @@ struct PermissionsView: View {
                     .foregroundColor(.secondary)
             } header: {
                 Text("Default Mode")
+            }
+
+            // MARK: - Auto Mode
+            Section {
+                autoModeRuleList(
+                    title: "Allow",
+                    accent: .green,
+                    text: $autoModeAllowText,
+                    includeDefaults: $autoModeAllowDefaults,
+                    placeholder: "One rule per line, e.g.\nBash(npm run *)\nRead(*)"
+                )
+                autoModeRuleList(
+                    title: "Soft Deny (asks)",
+                    accent: .orange,
+                    text: $autoModeSoftDenyText,
+                    includeDefaults: $autoModeSoftDenyDefaults,
+                    placeholder: "One rule per line, e.g.\nEdit(.env*)"
+                )
+                autoModeRuleList(
+                    title: "Hard Deny (blocked unconditionally)",
+                    accent: .red,
+                    text: $autoModeHardDenyText,
+                    includeDefaults: $autoModeHardDenyDefaults,
+                    placeholder: "One rule per line, e.g.\nBash(rm -rf /*)"
+                )
+                autoModeRuleList(
+                    title: "Environment",
+                    accent: .blue,
+                    text: $autoModeEnvironmentText,
+                    includeDefaults: $autoModeEnvironmentDefaults,
+                    placeholder: "Environment-scoped rules, one per line"
+                )
+            } header: {
+                Text("Auto Mode Rules")
+            } footer: {
+                Text("Rules that Claude Code's auto-mode classifier uses when /auto is enabled. \"Include built-in defaults\" inserts the $defaults sentinel so your rules extend the built-ins instead of replacing them. Hard-deny rules can't be overridden by allow exceptions.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             }
 
             // MARK: - Tool Permissions
@@ -432,6 +480,13 @@ struct PermissionsView: View {
         // Permission mode toggles
         disableBypassPermissions = perms.disableBypassPermissionsMode != nil
         skipDangerousModePrompt = perms.skipDangerousModePermissionPrompt == true
+
+        // Auto Mode
+        let am = configManager.settings.autoMode
+        (autoModeAllowText, autoModeAllowDefaults) = splitDefaultsSentinel(am?.allow)
+        (autoModeSoftDenyText, autoModeSoftDenyDefaults) = splitDefaultsSentinel(am?.softDeny)
+        (autoModeHardDenyText, autoModeHardDenyDefaults) = splitDefaultsSentinel(am?.hardDeny)
+        (autoModeEnvironmentText, autoModeEnvironmentDefaults) = splitDefaultsSentinel(am?.environment)
     }
 
     private func savePermissions() {
@@ -470,6 +525,83 @@ struct PermissionsView: View {
         if skipDangerousModePrompt { permsDict["skipDangerousModePermissionPrompt"] = true }
 
         configManager.saveField("permissions", value: permsDict.isEmpty ? nil : permsDict)
+    }
+
+    // MARK: - Auto Mode helpers
+
+    /// Splits a stored rule list into (custom-rules-as-newline-separated-text, includesDefaults).
+    /// The `"$defaults"` sentinel is hoisted out into the toggle so users see only their own rules in the text area.
+    private func splitDefaultsSentinel(_ list: [String]?) -> (String, Bool) {
+        guard let list = list else { return ("", false) }
+        var includesDefaults = false
+        var rest: [String] = []
+        for rule in list {
+            if rule == "$defaults" { includesDefaults = true }
+            else { rest.append(rule) }
+        }
+        return (rest.joined(separator: "\n"), includesDefaults)
+    }
+
+    /// Rebuilds a rule list from the text area + defaults toggle. Returns nil when both empty.
+    private func joinDefaultsSentinel(text: String, includeDefaults: Bool) -> [String]? {
+        let lines = text
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var combined: [String] = []
+        if includeDefaults { combined.append("$defaults") }
+        combined.append(contentsOf: lines)
+        return combined.isEmpty ? nil : combined
+    }
+
+    private func saveAutoMode() {
+        guard !isSyncing else { return }
+        var dict: [String: Any] = [:]
+        if let v = joinDefaultsSentinel(text: autoModeAllowText, includeDefaults: autoModeAllowDefaults) {
+            dict["allow"] = v
+        }
+        if let v = joinDefaultsSentinel(text: autoModeSoftDenyText, includeDefaults: autoModeSoftDenyDefaults) {
+            dict["soft_deny"] = v
+        }
+        if let v = joinDefaultsSentinel(text: autoModeHardDenyText, includeDefaults: autoModeHardDenyDefaults) {
+            dict["hard_deny"] = v
+        }
+        if let v = joinDefaultsSentinel(text: autoModeEnvironmentText, includeDefaults: autoModeEnvironmentDefaults) {
+            dict["environment"] = v
+        }
+        configManager.saveField("autoMode", value: dict.isEmpty ? nil : dict)
+    }
+
+    // MARK: - Auto Mode Rule List sub-view
+
+    @ViewBuilder
+    private func autoModeRuleList(
+        title: String,
+        accent: Color,
+        text: Binding<String>,
+        includeDefaults: Binding<Bool>,
+        placeholder: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(accent)
+                    .frame(width: 8, height: 8)
+                Text(title)
+                    .font(.subheadline.bold())
+            }
+
+            Toggle("Include built-in defaults ($defaults)", isOn: includeDefaults)
+                .font(.caption)
+                .onChange(of: includeDefaults.wrappedValue) { _, _ in saveAutoMode() }
+
+            TextField("", text: text, prompt: Text(placeholder), axis: .vertical)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.caption, design: .monospaced))
+                .lineLimit(2...8)
+                .onChange(of: text.wrappedValue) { _, _ in saveAutoMode() }
+        }
+        .padding(.vertical, 4)
     }
 }
 

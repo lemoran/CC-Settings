@@ -63,6 +63,7 @@ struct ClaudeSettings: Equatable {
 
     // Auto Mode
     var disableAutoMode: String?
+    var autoMode: AutoModeConfig?
 
     // Hooks kill switch
     var disableAllHooks: Bool?
@@ -142,6 +143,7 @@ extension ClaudeSettings: Codable {
         prUrlTemplate = try c.decodeIfPresent(String.self, forKey: .prUrlTemplate)
         teammateMode = try c.decodeIfPresent(String.self, forKey: .teammateMode)
         disableAutoMode = try c.decodeIfPresent(String.self, forKey: .disableAutoMode)
+        autoMode = try c.decodeIfPresent(AutoModeConfig.self, forKey: .autoMode)
         disableAllHooks = try c.decodeIfPresent(Bool.self, forKey: .disableAllHooks)
         claudeMdExcludes = try c.decodeIfPresent([String].self, forKey: .claudeMdExcludes)
         sandbox = try c.decodeIfPresent(SandboxConfig.self, forKey: .sandbox)
@@ -220,6 +222,24 @@ struct WorktreeConfig: Codable, Equatable {
 
 struct AutoCompactConfig: Codable, Equatable {
     var customInstructions: String?
+}
+
+// MARK: - Auto Mode
+
+/// Claude Code's auto-mode classifier rule lists. Include the sentinel `"$defaults"`
+/// in any list to extend the built-in rules rather than replace them.
+struct AutoModeConfig: Codable, Equatable {
+    var allow: [String]?
+    var softDeny: [String]?
+    var hardDeny: [String]?
+    var environment: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case allow
+        case softDeny = "soft_deny"
+        case hardDeny = "hard_deny"
+        case environment
+    }
 }
 
 // MARK: - Attribution
