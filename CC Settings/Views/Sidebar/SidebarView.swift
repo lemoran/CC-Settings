@@ -44,6 +44,7 @@ enum NavigationItem: Hashable {
     case sessionHistory
     case commands
     case skills
+    case themes
     case plugins
     case mcpServers
     case agents
@@ -71,6 +72,7 @@ enum NavigationItem: Hashable {
         case .sessionHistory: return "Session History"
         case .commands: return "Commands"
         case .skills: return "Skills"
+        case .themes: return "Themes"
         case .plugins: return "Plugins"
         case .mcpServers: return "MCP Servers"
         case .agents: return "Agents"
@@ -100,6 +102,7 @@ enum NavigationItem: Hashable {
         case .sessionHistory: return "clock.arrow.circlepath"
         case .commands: return "command"
         case .skills: return "star"
+        case .themes: return "paintbrush"
         case .plugins: return "puzzlepiece"
         case .mcpServers: return "server.rack"
         case .agents: return "person.crop.rectangle.stack"
@@ -165,6 +168,8 @@ enum NavigationItem: Hashable {
             return ["commands", "slash", "custom"]
         case .skills:
             return ["skills", "skill.md", "agents"]
+        case .themes:
+            return ["themes", "theme", "color", "appearance", "palette", "custom theme"]
         case .plugins:
             return ["plugins", "marketplace", "extensions"]
         case .mcpServers:
@@ -251,6 +256,7 @@ struct SidebarView: View {
     @State private var isLoadingSubfolders = false
     @State private var commandsCount: Int = 0
     @State private var skillsCount: Int = 0
+    @State private var themesCount: Int = 0
     @State private var pluginsCount: Int = 0
     @State private var mcpServersCount: Int = 0
     @State private var agentsCount: Int = 0
@@ -393,7 +399,7 @@ struct SidebarView: View {
                     }
                 }
 
-                if !isSearching || [NavigationItem.commands, .skills, .plugins, .mcpServers, .agents, .rules].contains(where: matchesSearch) {
+                if !isSearching || [NavigationItem.commands, .skills, .themes, .plugins, .mcpServers, .agents, .rules].contains(where: matchesSearch) {
                     Section("Extensions") {
                         if matchesSearch(.commands) {
                             navCountRow(.commands, label: "Commands", icon: "command", count: commandsCount)
@@ -402,6 +408,10 @@ struct SidebarView: View {
                         if matchesSearch(.skills) {
                             navCountRow(.skills, label: "Skills", icon: "star", count: skillsCount)
                                 .contextMenu { showClaudeDirMenu("skills") }
+                        }
+                        if matchesSearch(.themes) {
+                            navCountRow(.themes, label: "Themes", icon: "paintbrush", count: themesCount)
+                                .contextMenu { showClaudeDirMenu("themes") }
                         }
                         if matchesSearch(.plugins) {
                             navCountRow(.plugins, label: "Plugins", icon: "puzzlepiece", count: pluginsCount)
@@ -473,7 +483,7 @@ struct SidebarView: View {
             .onChange(of: searchText) {
                 guard isSearching else { return }
                 let allItems: [NavigationItem] = [.general, .permissions, .environment, .experimentalFeatures, .hooks, .hud,
-                                                   .claudeMDEditor, .sessionHistory, .commands, .skills, .plugins, .mcpServers,
+                                                   .claudeMDEditor, .sessionHistory, .commands, .skills, .themes, .plugins, .mcpServers,
                                                    .agents, .rules, .stats, .cleanup, .sync]
                 if !matchesSearch(selection) {
                     if let first = allItems.first(where: matchesSearch) {
@@ -644,6 +654,13 @@ struct SidebarView: View {
                 fm: fm
             )
 
+            // Count themes: top-level .json files under ~/.claude/themes/
+            let thmCount = Self.countFiles(
+                in: claudeDir.appendingPathComponent("themes"),
+                matching: { $0.pathExtension.lowercased() == "json" },
+                fm: fm
+            )
+
             // Get projects on main actor, then count items off main actor
             let projects: [Project] = await MainActor.run {
                 configManager.loadProjects()
@@ -651,7 +668,7 @@ struct SidebarView: View {
             let projectCounts = Self.countProjectItems(projects: projects, fm: fm)
 
             // Known sidebar items to exclude from discovered folders
-            let excludedNames: Set<String> = ["commands", "skills", "plugins", "projects", "agents", "rules"]
+            let excludedNames: Set<String> = ["commands", "skills", "themes", "plugins", "projects", "agents", "rules"]
 
             guard let contents = try? fm.contentsOfDirectory(
                 at: claudeDir,
@@ -661,6 +678,7 @@ struct SidebarView: View {
                 await MainActor.run {
                     commandsCount = cmdCount + projectCounts.commands
                     skillsCount = sklCount + projectCounts.skills
+                    themesCount = thmCount
                     pluginsCount = plgCount
                     mcpServersCount = mcpCount
                     agentsCount = agtCount + projectCounts.agents

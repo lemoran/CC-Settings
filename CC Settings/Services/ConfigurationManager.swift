@@ -1050,4 +1050,67 @@ class ConfigurationManager: ObservableObject {
 
         return files
     }
+
+    // MARK: - Themes
+
+    /// Reads all `*.json` files under `~/.claude/themes/`, parsed as `ThemeFile`.
+    /// Unknown JSON keys are preserved in `ThemeFile.unknownFields` so saves
+    /// don't drop schema-novel data.
+    func loadThemes() -> [ThemeFile] {
+        let themesDir = claudeDir.appendingPathComponent("themes")
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: themesDir, includingPropertiesForKeys: nil) else {
+            return []
+        }
+        return urls
+            .filter { $0.pathExtension.lowercased() == "json" }
+            .compactMap { ThemeFile.load(from: $0) }
+            .sorted { $0.id.lowercased() < $1.id.lowercased() }
+    }
+
+    /// Writes a theme to disk and registers it with FileWatcher so external
+    /// edits are tracked. Atomic; will create `~/.claude/themes/` if missing.
+    func saveTheme(_ theme: ThemeFile) throws {
+        try FileManager.default.createDirectory(
+            at: theme.url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let data = try theme.serialize()
+        try data.write(to: theme.url, options: [.atomic])
+        FileWatcher.shared.updateFileTracking(for: [theme.url])
+    }
+
+    /// Deletes a theme file. Returns whether the file existed at deletion time.
+    @discardableResult
+    func deleteTheme(at url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        do {
+            try FileManager.default.removeItem(at: url)
+            return true
+        } catch {
+            lastError = error
+            return false
+        }
+    }
+
+    /// Returns the URL where a new theme with the requested basename would live.
+    /// Disambiguates by appending `-2`, `-3`, … when the name is taken.
+    func themeURL(forNewName name: String) -> URL {
+        let themesDir = claudeDir.appendingPathComponent("themes")
+        let baseSlug = sanitizeThemeName(name)
+        var candidate = themesDir.appendingPathComponent("\(baseSlug).json")
+        var counter = 2
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = themesDir.appendingPathComponent("\(baseSlug)-\(counter).json")
+            counter += 1
+        }
+        return candidate
+    }
+
+    private func sanitizeThemeName(_ name: String) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = trimmed.isEmpty ? "untitled" : trimmed
+        // Strip path separators and reserved characters; keep alnum, dash, underscore, dot
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        return String(cleaned.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" })
+    }
 }

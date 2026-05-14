@@ -51,6 +51,8 @@ struct ContentView: View {
             CommandsView()
         case .skills:
             SkillsView()
+        case .themes:
+            ThemesView()
         case .plugins:
             PluginsView()
         case .mcpServers:

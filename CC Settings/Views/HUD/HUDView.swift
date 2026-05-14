@@ -1842,33 +1842,4 @@ struct PreviewDropDelegate: DropDelegate {
     }
 }
 
-// MARK: - Color Hex Helpers
-
-extension Color {
-    /// Create a Color from a hex string like "#ff6600"
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let r, g, b: Double
-        if hex.count == 6 {
-            r = Double((int >> 16) & 0xFF) / 255
-            g = Double((int >> 8) & 0xFF) / 255
-            b = Double(int & 0xFF) / 255
-        } else {
-            r = 1; g = 1; b = 1
-        }
-        self.init(red: r, green: g, blue: b)
-    }
-
-    /// Convert a Color to "#rrggbb" hex string
-    func toHex() -> String {
-        guard let components = NSColor(self).usingColorSpace(.sRGB) else {
-            return "#000000"
-        }
-        let r = Int(round(components.redComponent * 255))
-        let g = Int(round(components.greenComponent * 255))
-        let b = Int(round(components.blueComponent * 255))
-        return String(format: "#%02x%02x%02x", r, g, b)
-    }
-}
+// Color hex helpers live in Views/Common/ColorHexExtension.swift

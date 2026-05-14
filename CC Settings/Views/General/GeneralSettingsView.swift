@@ -308,6 +308,25 @@ struct GeneralSettingsView: View {
     @ViewBuilder
     private var appearanceSection: some View {
         Section("Appearance") {
+            if let active = configManager.settings.theme,
+               !AppTheme.allCases.compactMap(\.cliTheme).contains(active),
+               !ThemePresets.builtIns.contains(where: { $0.id == active }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "paintbrush.fill")
+                        .foregroundColor(.accentColor)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Custom theme \"\(active)\" is active")
+                            .font(.subheadline.weight(.medium))
+                        Text("Changing the Theme picker below will overwrite the CLI's custom theme. Manage themes in the Themes section.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(10)
+                .glassBanner(tint: .accentColor)
+            }
+
             Picker("Theme", selection: $themeManager.selectedThemeName) {
                 ForEach(AppTheme.allCases) { theme in
                     HStack(spacing: 6) {
